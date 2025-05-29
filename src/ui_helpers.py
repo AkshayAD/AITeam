@@ -265,6 +265,21 @@ def format_results_markdown(analysis_results):
 
     return markdown_output
 
+def format_results_html(analysis_results):
+    """Convert analysis results list into styled HTML."""
+    if not analysis_results:
+        return "<p>No analysis results available.</p>"
+
+    html_output = ""
+    for i, result in enumerate(analysis_results):
+        html_output += f"<h3>Task {i+1}: {result.get('task', 'N/A')}</h3>"
+        html_output += f"<p><strong>Approach:</strong> {result.get('approach', 'N/A')}</p>"
+        code_block = result.get('code', 'N/A')
+        html_output += f"<pre><code>{code_block}</code></pre>"
+        html_output += f"<p><strong>Results:</strong> {result.get('results_text', 'N/A')}</p>"
+        html_output += f"<p><strong>Insights:</strong> {result.get('insights', 'N/A')}</p>"
+    return html_output
+
 # Function to check API key before AI calls
 def check_api_key():
     if not st.session_state.gemini_api_key:

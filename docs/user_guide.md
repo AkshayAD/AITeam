@@ -82,7 +82,8 @@ The AI Data Analysis Assistant is designed to guide you through a structured dat
    - Expand the "Provide feedback on the final report" section
    - Enter your feedback
    - Click "Send Feedback" to get a revised report
-4. You can download the report as an HTML file by clicking "Download Report as HTML"
+4. The app also renders a styled HTML report using a Jinja2 template.
+   Click "Download Styled HTML" to save it locally.
 
 ## Navigation
 

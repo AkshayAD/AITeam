@@ -7,8 +7,10 @@ from src.ui_helpers import (
     add_to_conversation,
     check_api_key,
     add_download_buttons,
-    format_results_markdown # Import necessary helpers
+    format_results_markdown,
+    format_results_html
 )
+from src.report_utils import render_final_report_html
 
 def display_final_report_step():
     """Displays the Final Report step."""
@@ -82,18 +84,26 @@ def display_final_report_step():
         except Exception as e:
             st.error(f"Error creating report download button: {e}")
 
-        # Optional: Convert Markdown to HTML for better preview or other formats?
+        # Styled HTML report using the Jinja2 template
         try:
-            html_report = markdown.markdown(st.session_state.final_report)
+            analysis_results_html = format_results_html(st.session_state.analysis_results)
+            html_report = render_final_report_html({
+                "project_name": st.session_state.project_name,
+                "problem_statement": st.session_state.problem_statement,
+                "manager_plan": st.session_state.manager_plan,
+                "analyst_summary": st.session_state.analyst_summary,
+                "analysis_results_html": analysis_results_html,
+            })
+            st.components.v1.html(html_report, height=600, scrolling=True)
             st.download_button(
-               label="Download Report (HTML)",
-               data=html_report,
-               file_name=f"{st.session_state.project_name}_Final_Report.html",
-               mime="text/html",
-               key="download_report_html"
-               )
+                label="Download Styled HTML",
+                data=html_report,
+                file_name=f"{st.session_state.project_name}_Final_Report.html",
+                mime="text/html",
+                key="download_report_html"
+            )
         except Exception as e:
-            st.warning(f"Could not generate HTML download: {e}")
+            st.warning(f"Could not generate styled HTML: {e}")
 
 
     add_download_buttons("FinalReport")
