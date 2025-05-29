@@ -8,8 +8,51 @@ from src.ui_helpers import (
     check_api_key,
     add_download_buttons,
     format_results_markdown,
-    format_results_html
+    format_results_html,
 )
+
+
+def generate_final_report():
+    """Helper to (re)generate the final report."""
+    if not check_api_key():
+        return
+    with st.spinner("AI Manager is drafting the final report..."):
+        try:
+            results_summary = format_results_markdown(st.session_state.analysis_results)
+            prompt = st.session_state.manager_report_prompt_template.format(
+                project_name=st.session_state.project_name,
+                problem_statement=st.session_state.problem_statement,
+                manager_plan=st.session_state.manager_plan,
+                analyst_summary=st.session_state.analyst_summary,
+                analysis_results_summary=results_summary,
+            )
+
+            report_response = get_gemini_response(
+                prompt, persona="manager", model=st.session_state.gemini_model
+            )
+
+            if report_response and not report_response.startswith("Error:"):
+                st.session_state.final_report = report_response
+                add_to_conversation(
+                    "manager", f"Generated Final Report:\n{report_response}"
+                )
+                st.success("Final report generated!")
+                st.rerun()
+            else:
+                st.error(f"Failed to generate report: {report_response}")
+                add_to_conversation(
+                    "system", f"Error generating final report: {report_response}"
+                )
+        except KeyError as e:
+            st.error(
+                f"Prompt Formatting Error: Missing key {e} in Manager Report Prompt template. Please check the template in sidebar settings."
+            )
+            add_to_conversation(
+                "system", f"Error formatting Manager Report prompt: Missing key {e}"
+            )
+        except Exception as e:
+            st.error(f"An unexpected error occurred during report generation: {e}")
+            add_to_conversation("system", f"Error during report generation: {e}")
 from src.report_utils import render_final_report_html
 
 def display_final_report_step():
@@ -35,42 +78,14 @@ def display_final_report_step():
     # Generate Report Button
     if st.session_state.final_report is None:
         if st.button("Generate Final Report"):
-            if not check_api_key(): st.stop()
-            with st.spinner("AI Manager is drafting the final report..."):
-                # Prepare context for report generation
-                try:
-                    results_summary = format_results_markdown(st.session_state.analysis_results) # Use markdown formatter
-
-                    prompt = st.session_state.manager_report_prompt_template.format(
-                        project_name=st.session_state.project_name,
-                        problem_statement=st.session_state.problem_statement,
-                        manager_plan=st.session_state.manager_plan,
-                        analyst_summary=st.session_state.analyst_summary,
-                        analysis_results_summary=results_summary
-                    )
-
-                    report_response = get_gemini_response(prompt, persona="manager", model=st.session_state.gemini_model)
-
-                    if report_response and not report_response.startswith("Error:"):
-                        st.session_state.final_report = report_response
-                        add_to_conversation("manager", f"Generated Final Report:\n{report_response}")
-                        st.success("Final report generated!")
-                        st.rerun() # Rerun to display the report
-                    else:
-                        st.error(f"Failed to generate report: {report_response}")
-                        add_to_conversation("system", f"Error generating final report: {report_response}")
-
-                except KeyError as e:
-                    st.error(f"Prompt Formatting Error: Missing key {e} in Manager Report Prompt template. Please check the template in sidebar settings.")
-                    add_to_conversation("system", f"Error formatting Manager Report prompt: Missing key {e}")
-                except Exception as e:
-                    st.error(f"An unexpected error occurred during report generation: {e}")
-                    add_to_conversation("system", f"Error during report generation: {e}")
+            generate_final_report()
 
     # Display Report and Download
     if st.session_state.final_report:
         st.markdown("### Final Report Draft")
         st.markdown(st.session_state.final_report)
+        if st.button("Regenerate Final Report", key="regen_final_report"):
+            generate_final_report()
 
         # Allow download of the report itself
         try:

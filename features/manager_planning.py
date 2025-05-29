@@ -6,6 +6,53 @@ from src.utils import configure_genai, get_gemini_response, generate_data_profil
 from prompts import MANAGER_PROMPT_TEMPLATE, REVIEWER_PROMPT_TEMPLATE # Import specific prompts
 from src.ui_helpers import add_to_conversation, check_api_key, add_download_buttons # Import necessary helpers
 
+
+def generate_manager_plan():
+    """Helper to (re)generate the manager plan using the current context."""
+    with st.spinner("AI Manager is generating the analysis plan..."):
+        file_info = ""
+        for file_name, profile in st.session_state.data_profiles.items():
+            file_info += f"\nFile: {file_name}\n"
+            if profile:
+                file_info += f"- Columns: {profile.get('columns', 'N/A')}\n"
+                file_info += f"- Shape: {profile.get('shape', 'N/A')}\n"
+            else:
+                file_info += "- Profile: Not available (check file processing)\n"
+        for file_name, text in st.session_state.data_texts.items():
+            text_snippet = text[:100] + "..." if len(text) > 100 else text
+            file_info += (
+                f"\nFile: {file_name}\n- Type: Text Document\n- Snippet: {text_snippet}\n"
+            )
+
+        try:
+            prompt = st.session_state.manager_prompt_template.format(
+                project_name=st.session_state.project_name,
+                problem_statement=st.session_state.problem_statement,
+                data_context=st.session_state.data_context,
+                file_info=file_info if file_info else "No data files loaded.",
+            )
+            manager_response = get_gemini_response(
+                prompt, persona="manager", model=st.session_state.gemini_model
+            )
+            if manager_response and not manager_response.startswith("Error:"):
+                st.session_state.manager_plan = manager_response
+                add_to_conversation(
+                    "manager", f"Generated Analysis Plan:\n{manager_response}"
+                )
+                st.success("Plan generated!")
+                st.rerun()
+            else:
+                st.error(f"Failed to get plan from Manager: {manager_response}")
+                add_to_conversation(
+                    "system", f"Error getting Manager plan: {manager_response}"
+                )
+        except KeyError as e:
+            st.error(
+                f"Prompt Formatting Error: Missing key {e} in Manager Prompt template. Please check the template in sidebar settings."
+            )
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {e}")
+
 def display_manager_planning_step():
     """Displays the Manager Planning step."""
     st.title("👨‍💼 2. AI Manager - Analysis Planning")
@@ -14,46 +61,15 @@ def display_manager_planning_step():
 
     # Generate plan if not exists
     if st.session_state.manager_plan is None:
-        with st.spinner("AI Manager is generating the analysis plan..."):
-            # Prepare context for Manager
-            file_info = ""
-            for file_name, profile in st.session_state.data_profiles.items():
-                file_info += f"\nFile: {file_name}\n"
-                if profile: # Check if profile exists
-                    file_info += f"- Columns: {profile.get('columns', 'N/A')}\n"
-                    file_info += f"- Shape: {profile.get('shape', 'N/A')}\n"
-                else:
-                    file_info += "- Profile: Not available (check file processing)\n"
-            for file_name, text in st.session_state.data_texts.items():
-                text_snippet = text[:100] + "..." if len(text) > 100 else text
-                file_info += f"\nFile: {file_name}\n- Type: Text Document\n- Snippet: {text_snippet}\n" # Show snippet
-
-            # Use the editable prompt template
-            try:
-                prompt = st.session_state.manager_prompt_template.format(
-                    project_name=st.session_state.project_name,
-                    problem_statement=st.session_state.problem_statement,
-                    data_context=st.session_state.data_context,
-                    file_info=file_info if file_info else "No data files loaded."
-                )
-                manager_response = get_gemini_response(prompt, persona="manager", model=st.session_state.gemini_model)
-                if manager_response and not manager_response.startswith("Error:"):
-                    st.session_state.manager_plan = manager_response
-                    add_to_conversation("manager", f"Generated Analysis Plan:\n{manager_response}")
-                    st.rerun() # Rerun to display the plan
-                else:
-                    st.error(f"Failed to get plan from Manager: {manager_response}")
-                    add_to_conversation("system", f"Error getting Manager plan: {manager_response}")
-            except KeyError as e:
-                st.error(f"Prompt Formatting Error: Missing key {e} in Manager Prompt template. Please check the template in sidebar settings.")
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
+        generate_manager_plan()
 
 
     # Display plan and interaction options
     if st.session_state.manager_plan:
         st.markdown("### Analysis Plan")
         st.markdown(st.session_state.manager_plan)
+        if st.button("Regenerate Plan", key="regen_manager_plan"):
+            generate_manager_plan()
 
         # --- Feedback Expander ---
         with st.expander("Provide Feedback to Manager"):
