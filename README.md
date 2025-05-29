@@ -87,7 +87,8 @@ Follow the installation and running instructions above. This requires Python kno
 
 6. **Generate a Final Report**:
    - The AI Manager will synthesize all findings into a comprehensive report
-   - You can download the report as an HTML file
+   - A styled HTML version is created using a Jinja2 template
+   - You can download the Markdown or HTML report
 
 ## Project Structure
 
