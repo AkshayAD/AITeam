@@ -140,47 +140,46 @@ def display_analysis_execution_step():
     # Suggest tasks based on parsing Associate guidance
     suggested_tasks = parse_associate_tasks(st.session_state.associate_guidance)
 
-    # Select or define task
-    # Check if 'selected_task_execution' exists, otherwise set default
+    # Ensure a default selection exists
     if "selected_task_execution" not in st.session_state:
         st.session_state.selected_task_execution = (
             suggested_tasks[0] if suggested_tasks else "Manually define task below"
         )
 
-    st.session_state.selected_task_execution = st.selectbox(
+    def _update_task_input():
+        """Sync text area with the selected task."""
+        if st.session_state.selected_task_execution != "Manually define task below":
+            st.session_state.task_input_area = st.session_state.selected_task_execution
+        else:
+            st.session_state.task_input_area = st.session_state.get("manual_task_input", "")
+
+    # Task selection box (parse_associate_tasks already includes the manual option)
+    st.selectbox(
         "Select suggested task or define manually:",
-        options=suggested_tasks + ["Manually define task below"],
-        # Try to keep selection, but handle cases where the stored value is not in the current list
+        options=suggested_tasks,
         index=(
-            (suggested_tasks + ["Manually define task below"]).index(
-                st.session_state.selected_task_execution
-            )
-            if st.session_state.selected_task_execution
-            in (suggested_tasks + ["Manually define task below"])
-            else (suggested_tasks + ["Manually define task below"]).index(
-                "Manually define task below"
-            )
-        ),  # Default to manual if stored value is invalid
-        key="task_selector",
+            suggested_tasks.index(st.session_state.selected_task_execution)
+            if st.session_state.selected_task_execution in suggested_tasks
+            else suggested_tasks.index("Manually define task below")
+        ),
+        key="selected_task_execution",
+        on_change=_update_task_input,
     )
 
-    # Text area for the task to be executed
-    # Pre-fill based on selection or leave empty for manual entry
-    default_task_value = ""
-    if st.session_state.selected_task_execution != "Manually define task below":
-        default_task_value = st.session_state.selected_task_execution
-    elif (
-        "manual_task_input" in st.session_state
-    ):  # Persist manual input if user switches back and forth
-        default_task_value = st.session_state.manual_task_input
+    # Initialize text area if not present
+    if "task_input_area" not in st.session_state:
+        if st.session_state.selected_task_execution != "Manually define task below":
+            st.session_state.task_input_area = st.session_state.selected_task_execution
+        else:
+            st.session_state.task_input_area = st.session_state.get("manual_task_input", "")
 
     task_to_run = st.text_area(
         "Task for Analyst:",
-        value=default_task_value,
-        height=100,
         key="task_input_area",
+        height=100,
         help="Confirm the task the Analyst should perform using Polars/Plotly. Edit if needed.",
     )
+
     # Store manual input separately if needed
     if st.session_state.selected_task_execution == "Manually define task below":
         st.session_state.manual_task_input = task_to_run
