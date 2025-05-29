@@ -61,6 +61,7 @@ The AI Data Analysis Assistant is designed to guide you through a structured dat
    - The Python code that would be used
    - The results of the analysis
    - Key insights derived from the results
+   - A button to run the generated code within the app and display any output or plots
 4. You can execute multiple analysis tasks by:
    - Reviewing the completed analyses
    - Entering a new task description

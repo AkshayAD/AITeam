@@ -8,6 +8,7 @@ An AI-driven data analysis assistant that simulates a team of AI personas (Manag
 - **AI Analyst**: Examines data details and executes specific analysis tasks
 - **AI Associate**: Provides guidance, hypotheses, and insights for analysis
 - **Interactive Reports**: Generate comprehensive HTML reports of your analysis
+- **In-App Code Execution**: Run generated Python code snippets directly within the app
 - **CSV Data Processing**: Upload and analyze your CSV data files
 - **Conversation History**: Track interactions with different AI personas
 
