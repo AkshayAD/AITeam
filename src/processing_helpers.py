@@ -11,11 +11,9 @@ def parse_associate_tasks(guidance_text):
     if not guidance_text:
         return tasks
 
-    # Split the guidance text into lines
-    # Split the guidance text into lines, keeping line endings to preserve structure within blocks
-    lines = guidance_text.strip().splitlines(keepends=True)
-
-    # Split the guidance text into lines, keeping line endings to preserve structure within blocks
+    # Split the guidance text into lines, keeping line endings to preserve
+    # structure within blocks.  This call should only happen once so subsequent
+    # logic works off a single list of lines.
     lines = guidance_text.strip().splitlines(keepends=True)
 
     # Regex to identify the start of a new Task block.
