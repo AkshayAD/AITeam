@@ -209,7 +209,7 @@ def main():
              st.session_state.analyst_task_prompt_template = st.text_area("Analyst Task Prompt", value=st.session_state.analyst_task_prompt_template, height=150, key="analyst_task_prompt_edit")
              st.session_state.associate_review_prompt_template = st.text_area("Associate Review Prompt", value=st.session_state.associate_review_prompt_template, height=150, key="associate_review_prompt_edit")
              st.session_state.manager_report_prompt_template = st.text_area("Manager Report Prompt", value=st.session_state.manager_report_prompt_template, height=150, key="manager_report_prompt_edit")
-        st.session_state.reviewer_prompt_template = st.text_area("Reviewer Prompt", value=st.session_state.reviewer_prompt_template, height=150, key="reviewer_prompt_edit")
+             st.session_state.reviewer_prompt_template = st.text_area("Reviewer Prompt", value=st.session_state.reviewer_prompt_template, height=150, key="reviewer_prompt_edit")
 
 
     # --- Main Content Area ---
