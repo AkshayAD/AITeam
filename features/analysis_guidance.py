@@ -4,6 +4,41 @@ from src.utils import configure_genai, get_gemini_response
 from prompts import ASSOCIATE_PROMPT_TEMPLATE, REVIEWER_PROMPT_TEMPLATE # Import specific prompts
 from src.ui_helpers import add_to_conversation, check_api_key, add_download_buttons # Import necessary helpers
 
+
+def generate_associate_guidance():
+    """Helper to (re)generate associate guidance."""
+    if not st.session_state.analyst_summary or not st.session_state.manager_plan:
+        st.warning("Required context missing. Complete previous steps first.")
+        return
+    with st.spinner("AI Associate is generating guidance and next steps..."):
+        try:
+            prompt = st.session_state.associate_prompt_template.format(
+                problem_statement=st.session_state.problem_statement,
+                manager_plan=st.session_state.manager_plan,
+                analyst_summary=st.session_state.analyst_summary,
+            )
+            assoc_response = get_gemini_response(
+                prompt, persona="associate", model=st.session_state.gemini_model
+            )
+            if assoc_response and not assoc_response.startswith("Error:"):
+                st.session_state.associate_guidance = assoc_response
+                add_to_conversation(
+                    "associate", f"Generated Analysis Guidance:\n{assoc_response}"
+                )
+                st.success("Guidance generated!")
+                st.rerun()
+            else:
+                st.error(f"Failed to get guidance: {assoc_response}")
+                add_to_conversation(
+                    "system", f"Error getting Associate guidance: {assoc_response}"
+                )
+        except KeyError as e:
+            st.error(
+                f"Prompt Formatting Error: Missing key {e} in Associate Guidance Prompt template. Please check the template in sidebar settings."
+            )
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {e}")
+
 def display_analysis_guidance_step():
     """Displays the Analysis Guidance step."""
     st.title("🔍 4. AI Associate - Analysis Guidance")
@@ -11,40 +46,15 @@ def display_analysis_guidance_step():
 
     # Generate guidance if not exists
     if st.session_state.associate_guidance is None:
-         if not st.session_state.analyst_summary:
-              st.warning("Analyst Summary not available. Please complete Step 3 first.")
-              if st.button("Go back to Data Understanding"): st.session_state.current_step = 2; st.rerun()
-              st.stop()
-         elif not st.session_state.manager_plan:
-               st.warning("Manager Plan not available. Please complete Step 2 first.")
-               if st.button("Go back to Manager Planning"): st.session_state.current_step = 1; st.rerun()
-               st.stop()
-         else:
-              with st.spinner("AI Associate is generating guidance and next steps..."):
-                    try:
-                        prompt = st.session_state.associate_prompt_template.format(
-                             problem_statement=st.session_state.problem_statement,
-                             manager_plan=st.session_state.manager_plan,
-                             analyst_summary=st.session_state.analyst_summary
-                        )
-                        assoc_response = get_gemini_response(prompt, persona="associate", model=st.session_state.gemini_model)
-                        if assoc_response and not assoc_response.startswith("Error:"):
-                             st.session_state.associate_guidance = assoc_response
-                             add_to_conversation("associate", f"Generated Analysis Guidance:\n{assoc_response}")
-                             st.rerun()
-                        else:
-                             st.error(f"Failed to get guidance: {assoc_response}")
-                             add_to_conversation("system", f"Error getting Associate guidance: {assoc_response}")
-                    except KeyError as e:
-                        st.error(f"Prompt Formatting Error: Missing key {e} in Associate Guidance Prompt template. Please check the template in sidebar settings.")
-                    except Exception as e:
-                        st.error(f"An unexpected error occurred: {e}")
+        generate_associate_guidance()
 
 
     # Display guidance
     if st.session_state.associate_guidance:
         st.markdown("### Analysis Guidance & Next Tasks")
         st.markdown(st.session_state.associate_guidance)
+        if st.button("Regenerate Guidance", key="regen_associate_guidance"):
+            generate_associate_guidance()
 
         # --- Consultation/Review Section ---
         with st.expander("💬 Consult with AI Persona"):

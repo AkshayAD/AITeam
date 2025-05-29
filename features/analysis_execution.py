@@ -18,6 +18,89 @@ from src.processing_helpers import (
 from src.code_executor import execute_snippet
 
 
+def run_analysis_task(task_to_run, selected_files):
+    """Helper to execute an analysis task via Gemini."""
+    target_file = selected_files[0]
+    df_pl = st.session_state.dataframes.get(target_file)
+
+    if df_pl is None:
+        st.error(
+            f"Selected file '{target_file}' not found in loaded data. Please reset or check uploads."
+        )
+        return
+
+    try:
+        data_sample_json = json.dumps(df_pl.head(5).to_dicts())
+    except Exception as e:
+        st.warning(f"Could not generate JSON sample for {target_file}: {e}")
+        data_sample_json = json.dumps({"error": f"Could not generate sample: {e}"})
+
+    available_columns_str = ", ".join(df_pl.columns)
+
+    previous_results_summary = "\n".join(
+        [f"- Task {i+1}: {res.get('task', 'N/A')[:60]}..." for i, res in enumerate(st.session_state.analysis_results)]
+    )
+    if not previous_results_summary:
+        previous_results_summary = "No previous analysis tasks completed in this session."
+    else:
+        previous_results_summary = "Summary of Previous Tasks:\n" + previous_results_summary
+
+    try:
+        prompt = st.session_state.analyst_task_prompt_template.format(
+            project_name=st.session_state.project_name,
+            problem_statement=st.session_state.problem_statement,
+            previous_results_summary=previous_results_summary,
+            task_to_execute=task_to_run,
+            file_names=", ".join(selected_files),
+            available_columns=available_columns_str,
+            data_sample=data_sample_json,
+        )
+
+        with st.spinner(f"AI Analyst is working on task: {task_to_run[:50]}..."):
+            analyst_response = get_gemini_response(
+                prompt, persona="analyst", model=st.session_state.gemini_model
+            )
+
+        if analyst_response and not analyst_response.startswith("Error:"):
+            with st.expander("🔍 Raw LLM Output (Temporary for Debugging)"):
+                st.text(analyst_response)
+
+            add_to_conversation(
+                "user", f"Requested Analyst Task: {task_to_run} on files: {', '.join(selected_files)}"
+            )
+            add_to_conversation("analyst", f"Generated Analysis for Task:\n{analyst_response}")
+
+            parsed_result = parse_analyst_task_response(analyst_response)
+
+            current_result = {
+                "task": task_to_run,
+                "files": selected_files,
+                "approach": parsed_result["approach"],
+                "code": parsed_result["code"],
+                "results_text": parsed_result["results_text"],
+                "insights": parsed_result["insights"],
+            }
+            st.session_state.analysis_results.append(current_result)
+            st.success("Analyst finished task!")
+            st.rerun()
+        else:
+            st.error(f"Failed to get analysis from Analyst: {analyst_response}")
+            add_to_conversation(
+                "system", f"Error executing task '{task_to_run}': {analyst_response}"
+            )
+    except KeyError as e:
+        st.error(
+            f"Prompt Formatting Error: Missing key '{e}' in Analyst Task Prompt template. "
+        )
+        st.error(
+            "Please check the 'Analyst Task Prompt' in the sidebar settings. It should likely use '{{file_names}}' (plural) instead of '{{file-name}}'."
+        )
+        add_to_conversation("system", f"Error formatting Analyst Task prompt: Missing key {e}")
+    except Exception as e:
+        st.error(f"An unexpected error occurred during task execution: {e}")
+        add_to_conversation("system", f"Error during task execution: {e}")
+
+
 def display_analysis_execution_step():
     """Displays the Analysis Execution step."""
     st.title("⚙️ 5. AI Analyst - Analysis Execution")
@@ -138,126 +221,9 @@ def display_analysis_execution_step():
         elif not selected_files:
             st.error("Please select at least one data file for the task.")
         elif not check_api_key():
-            st.stop()  # Already checked, but good practice
+            st.stop()
         else:
-            # --- Prepare Context for Analyst Task Prompt ---
-            # Select the *first* selected dataframe for sample and columns
-            # Future enhancement: Allow specifying which file for sample/columns if multiple selected
-            target_file = selected_files[0]
-            df_pl = st.session_state.dataframes.get(target_file)
-
-            if df_pl is None:
-                st.error(
-                    f"Selected file '{target_file}' not found in loaded data. Please reset or check uploads."
-                )
-                st.stop()
-
-            # Get data sample (Polars to JSON) - use write_json for better compatibility
-            try:
-                # Limit columns in sample if too many? For now, take head(5)
-                data_sample_json = json.dumps(df_pl.head(5).to_dicts())
-            except Exception as e:
-                st.warning(f"Could not generate JSON sample for {target_file}: {e}")
-                data_sample_json = json.dumps(
-                    {"error": f"Could not generate sample: {e}"}
-                )  # Ensure valid JSON string
-
-            # Get available columns
-            available_columns_str = ", ".join(df_pl.columns)
-
-            # Summarize previous results (simple summary)
-            previous_results_summary = "\n".join(
-                [
-                    f"- Task {i+1}: {res.get('task', 'N/A')[:60]}..."
-                    for i, res in enumerate(st.session_state.analysis_results)
-                ]
-            )
-            if not previous_results_summary:
-                previous_results_summary = (
-                    "No previous analysis tasks completed in this session."
-                )
-            else:
-                previous_results_summary = (
-                    "Summary of Previous Tasks:\n" + previous_results_summary
-                )
-
-            # Format the prompt - **CRITICAL POINT FOR THE ERROR**
-            try:
-                prompt = st.session_state.analyst_task_prompt_template.format(
-                    project_name=st.session_state.project_name,
-                    problem_statement=st.session_state.problem_statement,
-                    previous_results_summary=previous_results_summary,
-                    task_to_execute=task_to_run,
-                    file_names=", ".join(selected_files),  # Use selected files (PLURAL)
-                    available_columns=available_columns_str,
-                    data_sample=data_sample_json,
-                )
-
-                # Call LLM
-                with st.spinner(
-                    f"AI Analyst is working on task: {task_to_run[:50]}..."
-                ):
-                    analyst_response = get_gemini_response(
-                        prompt, persona="analyst", model=st.session_state.gemini_model
-                    )
-
-                    if analyst_response and not analyst_response.startswith("Error:"):
-                        # --- TEMPORARY: Display Raw LLM Output ---
-                        with st.expander("🔍 Raw LLM Output (Temporary for Debugging)"):
-                            st.text(analyst_response)
-                        # --- END TEMPORARY SECTION ---
-
-                        add_to_conversation(
-                            "user",
-                            f"Requested Analyst Task: {task_to_run} on files: {', '.join(selected_files)}",
-                        )
-                        add_to_conversation(
-                            "analyst",
-                            f"Generated Analysis for Task:\n{analyst_response}",
-                        )
-
-                        # Parse the response
-                        parsed_result = parse_analyst_task_response(analyst_response)
-
-                        # Store the result along with the task and files
-                        current_result = {
-                            "task": task_to_run,
-                            "files": selected_files,  # Store which files were selected
-                            "approach": parsed_result["approach"],
-                            "code": parsed_result["code"],
-                            "results_text": parsed_result[
-                                "results_text"
-                            ],  # LLM's description
-                            "insights": parsed_result["insights"],
-                        }
-                        st.session_state.analysis_results.append(current_result)
-                        st.success("Analyst finished task!")
-                        # Don't rerun immediately, results are displayed below
-                        # We need rerun() if we want the results section to update *instantly* without another interaction
-
-                    else:
-                        st.error(
-                            f"Failed to get analysis from Analyst: {analyst_response}"
-                        )
-                        add_to_conversation(
-                            "system",
-                            f"Error executing task '{task_to_run}': {analyst_response}",
-                        )
-
-            except KeyError as e:
-                # ***** THIS IS WHERE THE 'file-name' KeyError WOULD BE CAUGHT *****
-                st.error(
-                    f"Prompt Formatting Error: Missing key '{e}' in Analyst Task Prompt template. "
-                )
-                st.error(
-                    f"Please check the 'Analyst Task Prompt' in the sidebar settings. It should likely use '{{file_names}}' (plural) instead of '{{file-name}}'."
-                )
-                add_to_conversation(
-                    "system", f"Error formatting Analyst Task prompt: Missing key {e}"
-                )
-            except Exception as e:
-                st.error(f"An unexpected error occurred during task execution: {e}")
-                add_to_conversation("system", f"Error during task execution: {e}")
+            run_analysis_task(task_to_run, selected_files)
 
     # --- Display Results ---
     st.markdown("---")
@@ -319,6 +285,9 @@ def display_analysis_execution_step():
         st.markdown("**Results (Description from AI):**")
         # Use st.text to preserve formatting of text-based tables from code output
         st.text(last_result.get("results_text", 'Could not parse "Results" section.'))
+        if st.button("Regenerate Last Task", key="regen_last_task"):
+            st.session_state.analysis_results.pop()
+            run_analysis_task(last_result.get("task"), last_result.get("files", []))
 
         # --- Section for External Execution Output ---
         st.markdown("---")

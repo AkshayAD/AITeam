@@ -6,6 +6,58 @@ from src.utils import configure_genai, get_gemini_response, generate_data_profil
 from prompts import ANALYST_PROMPT_TEMPLATE, REVIEWER_PROMPT_TEMPLATE # Import specific prompts
 from src.ui_helpers import add_to_conversation, check_api_key, add_download_buttons # Import necessary helpers
 
+
+def generate_analyst_summary():
+    """Helper to (re)generate the analyst summary."""
+    if not st.session_state.manager_plan:
+        st.warning("Manager Plan not available. Please complete Step 2 first.")
+        return
+    with st.spinner("AI Analyst is examining data profiles..."):
+        all_profiles_summary = ""
+        for file_name, profile in st.session_state.data_profiles.items():
+            try:
+                profile_summary = generate_data_profile_summary(profile)
+                all_profiles_summary += f"\n## Profile: {file_name}\n{profile_summary}\n"
+            except Exception as e:
+                all_profiles_summary += f"\n## Profile: {file_name}\nError generating summary: {e}\n"
+                st.warning(f"Could not generate profile summary for {file_name}: {e}")
+
+        for file_name, text in st.session_state.data_texts.items():
+            text_snippet = text[:200] + "..." if len(text) > 200 else text
+            all_profiles_summary += f"\n## Text Document: {file_name}\nSnippet: {text_snippet}\n"
+
+        if not all_profiles_summary.strip():
+            all_profiles_summary = "No detailed data profiles or text snippets available."
+            st.warning("No data profiles or text content found to provide to Analyst.")
+
+        try:
+            prompt = st.session_state.analyst_prompt_template.format(
+                problem_statement=st.session_state.problem_statement,
+                manager_plan=st.session_state.manager_plan,
+                data_profiles_summary=all_profiles_summary,
+            )
+            analyst_response = get_gemini_response(
+                prompt, persona="analyst", model=st.session_state.gemini_model
+            )
+            if analyst_response and not analyst_response.startswith("Error:"):
+                st.session_state.analyst_summary = analyst_response
+                add_to_conversation(
+                    "analyst", f"Generated Data Summary:\n{analyst_response}"
+                )
+                st.success("Summary generated!")
+                st.rerun()
+            else:
+                st.error(f"Failed to get data summary: {analyst_response}")
+                add_to_conversation(
+                    "system", f"Error getting Analyst summary: {analyst_response}"
+                )
+        except KeyError as e:
+            st.error(
+                f"Prompt Formatting Error: Missing key {e} in Analyst Summary Prompt template. Please check the template in sidebar settings."
+            )
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {e}")
+
 def display_data_understanding_step():
     """Displays the Data Understanding step."""
     st.title("📊 3. AI Analyst - Data Understanding")
@@ -13,48 +65,7 @@ def display_data_understanding_step():
 
     # Generate summary if not exists
     if st.session_state.analyst_summary is None:
-         if not st.session_state.manager_plan:
-              st.warning("Manager Plan not available. Please complete Step 2 first.")
-              if st.button("Go back to Manager Planning"): st.session_state.current_step = 1; st.rerun()
-              st.stop()
-         else:
-              with st.spinner("AI Analyst is examining data profiles..."):
-                    # Generate combined profile summary
-                    all_profiles_summary = ""
-                    for file_name, profile in st.session_state.data_profiles.items():
-                        try:
-                            profile_summary = generate_data_profile_summary(profile) # From utils
-                            all_profiles_summary += f"\n## Profile: {file_name}\n{profile_summary}\n"
-                        except Exception as e:
-                             all_profiles_summary += f"\n## Profile: {file_name}\nError generating summary: {e}\n"
-                             st.warning(f"Could not generate profile summary for {file_name}: {e}")
-
-                    for file_name, text in st.session_state.data_texts.items():
-                        text_snippet = text[:200] + "..." if len(text) > 200 else text
-                        all_profiles_summary += f"\n## Text Document: {file_name}\nSnippet: {text_snippet}\n" # Include text snippets
-
-                    if not all_profiles_summary.strip():
-                         all_profiles_summary = "No detailed data profiles or text snippets available."
-                         st.warning("No data profiles or text content found to provide to Analyst.")
-
-                    try:
-                        prompt = st.session_state.analyst_prompt_template.format(
-                             problem_statement=st.session_state.problem_statement,
-                             manager_plan=st.session_state.manager_plan,
-                             data_profiles_summary=all_profiles_summary
-                        )
-                        analyst_response = get_gemini_response(prompt, persona="analyst", model=st.session_state.gemini_model)
-                        if analyst_response and not analyst_response.startswith("Error:"):
-                             st.session_state.analyst_summary = analyst_response
-                             add_to_conversation("analyst", f"Generated Data Summary:\n{analyst_response}")
-                             st.rerun()
-                        else:
-                             st.error(f"Failed to get data summary: {analyst_response}")
-                             add_to_conversation("system", f"Error getting Analyst summary: {analyst_response}")
-                    except KeyError as e:
-                        st.error(f"Prompt Formatting Error: Missing key {e} in Analyst Summary Prompt template. Please check the template in sidebar settings.")
-                    except Exception as e:
-                        st.error(f"An unexpected error occurred: {e}")
+        generate_analyst_summary()
 
     # Display summary and data details
     if st.session_state.analyst_summary:
@@ -121,6 +132,8 @@ def display_data_understanding_step():
         st.markdown("### Data Summary & Assessment")
         # Display the Analyst's narrative summary as Markdown
         st.markdown(st.session_state.analyst_summary)
+        if st.button("Regenerate Summary", key="regen_analyst_summary"):
+            generate_analyst_summary()
 
         # --- Consultation/Review Section ---
         with st.expander("💬 Consult with AI Persona"):
